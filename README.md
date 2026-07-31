@@ -17,18 +17,28 @@ Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic M
 ### 直接运行
 
 ```bash
-# 编译并启动（默认端口 3457）
+# 编译并启动（默认监听 0.0.0.0:3457，局域网可访问）
 go build -o cline-proxy.exe .
 ./cline-proxy.exe
 
 # 指定端口
 ./cline-proxy.exe -port 3457
 
+# 只允许本机访问
+./cline-proxy.exe -host 127.0.0.1
+
+# 也可用环境变量（HOST / PORT），命令行参数优先
+HOST=0.0.0.0 PORT=3457 ./cline-proxy.exe
+
 # 构建 + 启动 + 打开浏览器
 go run . -start
 ```
 
-启动后访问 http://127.0.0.1:3457/admin/ 进入管理后台。
+启动后访问 http://127.0.0.1:3457/admin/ 进入管理后台，访问根路径 `/` 会自动跳转到后台。
+局域网内其他设备用 `http://<本机IP>:3457/admin/` 访问，启动日志会打印所有可用地址。
+
+> 默认绑定 `0.0.0.0` 意味着同网络的其他设备都能访问。请在后台 **设置** → **API Keys** 生成 Key
+> 来保护 `/v1/*` 接口；未配置 Key 时代理允许任何人无鉴权调用。
 
 ### Docker 部署
 

@@ -10,9 +10,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// listenAddr holds the address the proxy actually bound to, for reporting via /admin/api/config.
+var listenAddr = "127.0.0.1:3457"
 
 const (
 	defaultModel          = "cline-free/glm-5.2"
@@ -40,7 +44,7 @@ type chatRequest struct {
 	Extra       map[string]any `json:"-"`
 }
 
-func startProxy(port int) error {
+func startProxy(host string, port int) error {
 	p := loadPool()
 	activeCount := 0
 	for _, a := range p.Accounts {
@@ -220,24 +224,73 @@ func startProxy(port int) error {
 	mux.HandleFunc("/v1/messages", anthropicHandler)
 	mux.HandleFunc("/messages", anthropicHandler)
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	// Root: redirect to the admin panel so hitting the bare host/port is not a 404.
+	mux.HandleFunc("/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/admin/", http.StatusFound)
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": map[string]string{
+				"message": fmt.Sprintf("no route for %s %s. Admin panel: /admin/  API: /v1/chat/completions, /v1/messages, /v1/models", r.Method, r.URL.Path),
+				"type":    "not_found",
+			},
+		})
+	}))
+
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	listenAddr = addr
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
 	}
 
+	displayHost := host
+	if host == "0.0.0.0" || host == "::" || host == "[::]" {
+		displayHost = "127.0.0.1"
+	}
+	displayAddr := net.JoinHostPort(displayHost, strconv.Itoa(port))
+
 	fmt.Println("")
 	fmt.Println(strings.Repeat("=", 58))
 	fmt.Println("  Cline Go Proxy v1.0 - No CLI Required")
 	fmt.Println(strings.Repeat("=", 58))
-	fmt.Printf("  http://%s\n", addr)
-	fmt.Printf("  http://%s/v1\n", addr)
+	fmt.Printf("  Listening on %s\n", addr)
+	fmt.Printf("  Admin:   http://%s/admin/\n", displayAddr)
+	fmt.Printf("  API:     http://%s/v1\n", displayAddr)
+	if host == "0.0.0.0" || host == "::" {
+		for _, ip := range localIPv4s() {
+			fmt.Printf("  LAN:     http://%s/admin/\n", net.JoinHostPort(ip, strconv.Itoa(port)))
+		}
+		fmt.Println("  NOTE: bound to all interfaces - reachable from the network.")
+		fmt.Println("        Generate an API key at /admin/ to protect the API endpoints.")
+	}
 	fmt.Println("  API Key: any value")
 	fmt.Printf("  Model:   %s\n", defaultModel)
 	fmt.Printf("  Accounts: %d total, %d active\n", len(loadPool().Accounts), activeCount)
 	fmt.Println(strings.Repeat("=", 58))
 
 	return server.ListenAndServe()
+}
+
+// localIPv4s returns the machine's non-loopback IPv4 addresses.
+func localIPv4s() []string {
+	var out []string
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return out
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if v4 := ipnet.IP.To4(); v4 != nil {
+				out = append(out, v4.String())
+			}
+		}
+	}
+	return out
 }
 
 func corsHandler(h http.HandlerFunc) http.HandlerFunc {

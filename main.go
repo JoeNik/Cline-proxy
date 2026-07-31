@@ -7,20 +7,40 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"time"
 )
+
+// envOr returns the environment variable value, or def when unset/empty.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// envIntOr returns the environment variable parsed as int, or def when unset/invalid.
+func envIntOr(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
 
 func main() {
 	loginMode := flag.Bool("login", false, "Run OAuth device login flow and add account to pool")
 	captureMode := flag.Bool("capture", false, "Run interactive OAuth capture (records ALL traffic)")
-	port := flag.Int("port", 3457, "Proxy server port")
+	host := flag.String("host", envOr("HOST", "0.0.0.0"), "Bind address (0.0.0.0 = all interfaces, 127.0.0.1 = local only)")
+	port := flag.Int("port", envIntOr("PORT", 3457), "Proxy server port")
 	addAccount := flag.Bool("add-account", false, "Add a new account via OAuth to the pool")
 	showList := flag.Bool("list", false, "List all accounts in the pool")
 	startMode := flag.Bool("start", false, "Build, start proxy, and open admin panel in browser")
 	flag.Parse()
 
 	if *startMode {
-		buildAndStart(*port)
+		buildAndStart(*host, *port)
 		return
 	}
 
@@ -59,13 +79,13 @@ func main() {
 		return
 	}
 
-	if err := startProxy(*port); err != nil {
+	if err := startProxy(*host, *port); err != nil {
 		log.Fatalf("Proxy failed: %v", err)
 		os.Exit(1)
 	}
 }
 
-func buildAndStart(port int) {
+func buildAndStart(host string, port int) {
 	exe := "cline-proxy.exe"
 	if runtime.GOOS != "windows" {
 		exe = "./cline-proxy"
@@ -94,7 +114,7 @@ func buildAndStart(port int) {
 		fmt.Println("Proxy is already running.")
 	} else {
 		fmt.Println("Starting proxy...")
-		startCmd := exec.Command(exe)
+		startCmd := exec.Command(exe, "-host", host, "-port", strconv.Itoa(port))
 		startCmd.Stdout = os.Stdout
 		startCmd.Stderr = os.Stderr
 		if err := startCmd.Start(); err != nil {

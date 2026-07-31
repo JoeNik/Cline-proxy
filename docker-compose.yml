@@ -11,4 +11,5 @@ services:
       - ./.cline-accounts.json:/app/.cline-accounts.json
       - ./override.md:/app/override.md:ro
     environment:
+      - HOST=0.0.0.0
       - PORT=3457

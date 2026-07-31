@@ -16,7 +16,7 @@ EXPOSE 3457
 
 VOLUME ["/app/data"]
 
+ENV HOST=0.0.0.0
 ENV PORT=3457
 
 ENTRYPOINT ["/app/cline-proxy"]
-CMD ["-port", "3457"]

@@ -43,6 +43,7 @@ func writeAPI(w http.ResponseWriter, status int, resp apiResponse) {
 
 func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/", adminStaticHandler)
+	mux.HandleFunc("/admin", adminStaticHandler)
 	mux.HandleFunc("/admin/api/accounts", corsHandler(handleAdminAccounts))
 	mux.HandleFunc("/admin/api/accounts/add", corsHandler(handleAdminAccountAdd))
 	mux.HandleFunc("/admin/api/accounts/delete", corsHandler(handleAdminAccountDelete))
@@ -631,7 +632,7 @@ func handleAdminDeleteKey(w http.ResponseWriter, r *http.Request) {
 func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := getProxyConfig()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
-		"address":      "127.0.0.1:3457",
+		"address":      listenAddr,
 		"strategy":     cfg.Strategy,
 		"version":      "go-1.1",
 		"poolPath":     poolPath,

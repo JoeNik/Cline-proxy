@@ -99,7 +99,7 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 <div class="nav-item" data-tab="settings"><span>⚙️</span> 设置</div>
 <div style="margin-top:auto;padding:16px;font-size:12px;color:var(--text2)">
   <div>管理面板: <a href="/admin/" style="color:var(--accent)">/admin/</a></div>
-  <div>API 地址: <span id="footerApiAddr">http://127.0.0.1:3457</span></div>
+  <div>API 地址: <span id="footerApiAddr">-</span></div>
 </div>
 </div>
 
@@ -657,6 +657,8 @@ async function loadConfig() {
 }
 
 // ========== 初始化 ==========
+// 页面通过当前访问地址显示 API 地址，局域网访问时也能显示正确的 host
+_('footerApiAddr').textContent = location.origin;
 loadStats();
 loadAccounts();
 loadKeys();
