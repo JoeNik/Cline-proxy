@@ -45,6 +45,17 @@ type chatRequest struct {
 }
 
 func startProxy(host string, port int) error {
+	// Load configuration
+	cfg := loadConfig()
+	log.Printf("Loaded config: password=%t, auto-refresh=%t, cron=%s",
+		cfg.AdminPassword != "", cfg.AutoRefreshEnabled, cfg.AutoRefreshCron)
+
+	// Start auto-refresh scheduler if enabled
+	if cfg.AutoRefreshEnabled {
+		startAutoRefresh()
+		log.Printf("Auto-refresh scheduler started with cron: %s", cfg.AutoRefreshCron)
+	}
+
 	p := loadPool()
 	activeCount := 0
 	for _, a := range p.Accounts {
@@ -122,10 +133,24 @@ func startProxy(host string, port int) error {
 	}
 
 	modelsList := []map[string]any{
+		// Free models
 		{"id": "cline-free/glm-5.2", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+
+		// ClinePass models
 		{"id": "cline-pass/glm-5.2", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
 		{"id": "cline-pass/deepseek-v4-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/deepseek-v4-pro", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/kimi-k2.6", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/kimi-k2.7-code", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/kimi-k3", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/mimo-v2.5", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/mimo-v2.5-pro", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/minimax-m3", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
 		{"id": "cline-pass/qwen3.7-max", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+		{"id": "cline-pass/qwen3.7-plus", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
+
+		// Direct provider models
+		{"id": "deepseek/deepseek-v4-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "deepseek"},
 	}
 
 	modelsHandler := apiKeyHandler(func(w http.ResponseWriter, r *http.Request) {

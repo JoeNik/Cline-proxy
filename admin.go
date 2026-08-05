@@ -44,23 +44,28 @@ func writeAPI(w http.ResponseWriter, status int, resp apiResponse) {
 func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/", adminStaticHandler)
 	mux.HandleFunc("/admin", adminStaticHandler)
-	mux.HandleFunc("/admin/api/accounts", corsHandler(handleAdminAccounts))
-	mux.HandleFunc("/admin/api/accounts/add", corsHandler(handleAdminAccountAdd))
-	mux.HandleFunc("/admin/api/accounts/delete", corsHandler(handleAdminAccountDelete))
-	mux.HandleFunc("/admin/api/oauth/start", corsHandler(handleOAuthStart))
-	mux.HandleFunc("/admin/api/oauth/status", corsHandler(handleOAuthStatus))
-	mux.HandleFunc("/admin/api/sso/import", corsHandler(handleSSOImport))
-	mux.HandleFunc("/admin/api/stats", corsHandler(handleAdminStats))
-	mux.HandleFunc("/admin/api/batch-import", corsHandler(handleBatchImport))
-	mux.HandleFunc("/admin/api/accounts/refresh-all", corsHandler(handleAdminRefreshAll))
-	mux.HandleFunc("/admin/api/accounts/delete-all", corsHandler(handleAdminDeleteAll))
-	mux.HandleFunc("/admin/api/accounts/reset", corsHandler(handleAdminAccountReset))
-	mux.HandleFunc("/admin/api/keys", corsHandler(handleAdminGetKeys))
-	mux.HandleFunc("/admin/api/keys/generate", corsHandler(handleAdminGenerateKey))
-	mux.HandleFunc("/admin/api/keys/delete", corsHandler(handleAdminDeleteKey))
-	mux.HandleFunc("/admin/api/models", corsHandler(handleAdminModels))
-	mux.HandleFunc("/admin/api/config", corsHandler(handleAdminConfig))
-	mux.HandleFunc("/admin/api/config/update", corsHandler(handleAdminUpdateConfig))
+	mux.HandleFunc("/admin/api/auth/verify", corsHandler(handleAuthVerify))
+	mux.HandleFunc("/admin/api/auth/check", corsHandler(handleAuthCheck))
+	mux.HandleFunc("/admin/api/accounts", corsHandler(authMiddleware(handleAdminAccounts)))
+	mux.HandleFunc("/admin/api/accounts/add", corsHandler(authMiddleware(handleAdminAccountAdd)))
+	mux.HandleFunc("/admin/api/accounts/delete", corsHandler(authMiddleware(handleAdminAccountDelete)))
+	mux.HandleFunc("/admin/api/oauth/start", corsHandler(authMiddleware(handleOAuthStart)))
+	mux.HandleFunc("/admin/api/oauth/status", corsHandler(authMiddleware(handleOAuthStatus)))
+	mux.HandleFunc("/admin/api/sso/import", corsHandler(authMiddleware(handleSSOImport)))
+	mux.HandleFunc("/admin/api/stats", corsHandler(authMiddleware(handleAdminStats)))
+	mux.HandleFunc("/admin/api/batch-import", corsHandler(authMiddleware(handleBatchImport)))
+	mux.HandleFunc("/admin/api/accounts/refresh-all", corsHandler(authMiddleware(handleAdminRefreshAll)))
+	mux.HandleFunc("/admin/api/accounts/delete-all", corsHandler(authMiddleware(handleAdminDeleteAll)))
+	mux.HandleFunc("/admin/api/accounts/reset", corsHandler(authMiddleware(handleAdminAccountReset)))
+	mux.HandleFunc("/admin/api/keys", corsHandler(authMiddleware(handleAdminGetKeys)))
+	mux.HandleFunc("/admin/api/keys/generate", corsHandler(authMiddleware(handleAdminGenerateKey)))
+	mux.HandleFunc("/admin/api/keys/delete", corsHandler(authMiddleware(handleAdminDeleteKey)))
+	mux.HandleFunc("/admin/api/models", corsHandler(authMiddleware(handleAdminModels)))
+	mux.HandleFunc("/admin/api/config", corsHandler(authMiddleware(handleAdminConfig)))
+	mux.HandleFunc("/admin/api/config/update", corsHandler(authMiddleware(handleAdminUpdateConfig)))
+	mux.HandleFunc("/admin/api/scheduler/config", corsHandler(authMiddleware(handleSchedulerConfig)))
+	mux.HandleFunc("/admin/api/scheduler/update", corsHandler(authMiddleware(handleSchedulerUpdate)))
+	mux.HandleFunc("/admin/api/scheduler/trigger", corsHandler(authMiddleware(handleSchedulerTrigger)))
 }
 
 func adminStaticHandler(w http.ResponseWriter, r *http.Request) {
@@ -697,10 +702,24 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 // GET /admin/api/models
 func handleAdminModels(w http.ResponseWriter, r *http.Request) {
 	models := []map[string]any{
+		// Free models
 		{"id": "cline-free/glm-5.2", "provider": "zai", "cost": "free", "status": "active"},
+
+		// ClinePass models
 		{"id": "cline-pass/glm-5.2", "provider": "zai", "cost": "pass", "status": "active"},
 		{"id": "cline-pass/deepseek-v4-flash", "provider": "deepseek", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/deepseek-v4-pro", "provider": "deepseek", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/kimi-k2.6", "provider": "moonshot", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/kimi-k2.7-code", "provider": "moonshot", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/kimi-k3", "provider": "moonshot", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/mimo-v2.5", "provider": "mimo", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/mimo-v2.5-pro", "provider": "mimo", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/minimax-m3", "provider": "minimax", "cost": "pass", "status": "active"},
 		{"id": "cline-pass/qwen3.7-max", "provider": "qwen", "cost": "pass", "status": "active"},
+		{"id": "cline-pass/qwen3.7-plus", "provider": "qwen", "cost": "pass", "status": "active"},
+
+		// Direct provider models
+		{"id": "deepseek/deepseek-v4-flash", "provider": "deepseek", "cost": "paid", "status": "active"},
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"models": models}})
 }
@@ -735,5 +754,184 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"strategy": "round_robin",
 			"version":  "go-1.1",
 		},
+	})
+}
+
+// Authentication middleware
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := loadConfig()
+
+		// If no password is set, allow access
+		if cfg.AdminPassword == "" {
+			next(w, r)
+			return
+		}
+
+		// Check Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			writeAPI(w, http.StatusUnauthorized, apiResponse{Error: "unauthorized"})
+			return
+		}
+
+		// Expect "Bearer <password>"
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == cfg.AdminPassword {
+			next(w, r)
+			return
+		}
+
+		writeAPI(w, http.StatusUnauthorized, apiResponse{Error: "invalid password"})
+	}
+}
+
+// POST /admin/api/auth/verify  body: { password }
+func handleAuthVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+
+	cfg := loadConfig()
+
+	// If no password is set, always succeed
+	if cfg.AdminPassword == "" {
+		writeAPI(w, http.StatusOK, apiResponse{
+			Success: true,
+			Message: "no password required",
+		})
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if req.Password == cfg.AdminPassword {
+		writeAPI(w, http.StatusOK, apiResponse{
+			Success: true,
+			Message: "authenticated",
+		})
+		return
+	}
+
+	writeAPI(w, http.StatusUnauthorized, apiResponse{
+		Success: false,
+		Error:   "invalid password",
+	})
+}
+
+// GET /admin/api/auth/check
+func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+	cfg := loadConfig()
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Data: map[string]any{
+			"passwordRequired": cfg.AdminPassword != "",
+		},
+	})
+}
+
+// GET /admin/api/scheduler/config
+func handleSchedulerConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+
+	cfg := loadConfig()
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Data: map[string]any{
+			"enabled": cfg.AutoRefreshEnabled,
+			"cron":    cfg.AutoRefreshCron,
+			"running": scheduler != nil && scheduler.running,
+		},
+	})
+}
+
+// POST /admin/api/scheduler/update  body: { enabled, cron }
+func handleSchedulerUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		Enabled *bool   `json:"enabled"`
+		Cron    string `json:"cron"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
+		return
+	}
+
+	cfg := loadConfig()
+	changed := false
+
+	if req.Enabled != nil {
+		cfg.AutoRefreshEnabled = *req.Enabled
+		changed = true
+	}
+
+	if req.Cron != "" {
+		cfg.AutoRefreshCron = req.Cron
+		changed = true
+	}
+
+	if changed {
+		if err := saveConfig(cfg); err != nil {
+			writeAPI(w, http.StatusInternalServerError, apiResponse{Error: "failed to save config: " + err.Error()})
+			return
+		}
+
+		// Restart scheduler with new config
+		stopAutoRefresh()
+		if cfg.AutoRefreshEnabled {
+			startAutoRefresh()
+		}
+	}
+
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Message: "scheduler config updated",
+		Data: map[string]any{
+			"enabled": cfg.AutoRefreshEnabled,
+			"cron":    cfg.AutoRefreshCron,
+		},
+	})
+}
+
+// POST /admin/api/scheduler/trigger
+func handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+
+	go refreshExpiredAccounts()
+
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Message: "manual refresh triggered",
 	})
 }

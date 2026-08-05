@@ -8,6 +8,8 @@ Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic M
 - **多账号轮询**：自动在多个 Cline 账号间切换负载（支持 `round_robin` / `fill` / `random` 策略）
 - **中文管理后台**：浏览器访问 `/admin/` 即可管理账号、API Key、模型配置、请求头、代理设置
 - **API Key 鉴权**：保护代理端点，支持生成/删除多个 API Key
+- **管理面板密码保护**：可选的密码保护，防止未授权访问管理后台
+- **自动刷新调度器**：定时自动刷新过期或冷却的账号 Token，保持账号池活跃
 - **System Prompt 覆盖**：项目目录下放 `override.md` 则自动替换系统提示词，不存在则使用客户端自带
 - **账号导入**：支持 OAuth 浏览器登录、手动 Token 输入、批量文件导入
 - **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`
@@ -95,6 +97,51 @@ Model:    cline-free/glm-5.2
 
 后台 **设置** → **请求头** 可编辑转发给上游的自定义请求头（如 `x-client-type: cline-cli`）。
 
+### 6. 管理面板密码保护（可选）
+
+复制 `.env.example` 为 `.env`，设置 `ADMIN_PASSWORD` 变量：
+
+```bash
+cp .env.example .env
+# 编辑 .env 文件
+ADMIN_PASSWORD=your_secure_password
+```
+
+设置后，访问管理面板时需要输入密码。留空则不需要密码。
+
+### 7. 自动刷新调度器
+
+在后台 **设置** → **自动刷新调度器** 中配置：
+
+- **启用/禁用**：控制调度器开关
+- **Cron 表达式**：定时规则（分 时 日 月 周）
+  - `0 */6 * * *` - 每 6 小时执行一次
+  - `0 */2 * * *` - 每 2 小时执行一次
+  - `0 0 * * *` - 每天午夜执行
+- **立即刷新**：手动触发一次刷新操作
+
+调度器会自动刷新状态为"冷却"或"已过期"的账号 Token，无需手动维护。
+
+也可以在 `.env` 文件中预设默认配置：
+
+```bash
+SCHEDULER_ENABLED=true
+SCHEDULER_CRON=0 */6 * * *
+```
+
+### 8. 环境变量配置
+
+`.env` 文件支持的配置项：
+
+```bash
+# 管理面板访问密码（留空则不需要密码）
+ADMIN_PASSWORD=
+
+# 自动刷新调度器配置
+SCHEDULER_ENABLED=false
+SCHEDULER_CRON=0 */6 * * *
+```
+
 ## 可用模型（实测）
 
 ### 消耗账户额度
@@ -111,12 +158,33 @@ Model:    cline-free/glm-5.2
 
 ### 不消耗账户额度
 
+#### 免费模型（Free）
+
 | 模型 ID | 状态 | 说明 |
 |---------|:----:|------|
 | `cline-free/glm-5.2` | ✅ 可用 · 不消耗额度 | 免费模型，无限使用 |
-| `cline-pass/glm-5.2` | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
-| `cline-pass/deepseek-v4-flash` | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
-| `cline-pass/qwen3.7-max` | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+
+#### ClinePass 订阅模型
+
+| 模型 ID | 提供商 | 状态 | 说明 |
+|---------|--------|:----:|------|
+| `cline-pass/glm-5.2` | Z.ai | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/deepseek-v4-flash` | DeepSeek | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/deepseek-v4-pro` | DeepSeek | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/kimi-k2.6` | Moonshot AI | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/kimi-k2.7-code` | Moonshot AI | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/kimi-k3` | Moonshot AI | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/mimo-v2.5` | MiMo | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/mimo-v2.5-pro` | MiMo | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/minimax-m3` | MiniMax | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/qwen3.7-max` | Qwen | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+| `cline-pass/qwen3.7-plus` | Qwen | ❌ 403 · 不消耗额度 | 需要 `cline-pass` 订阅 |
+
+#### 直接提供商模型
+
+| 模型 ID | 提供商 | 状态 | 说明 |
+|---------|--------|:----:|------|
+| `deepseek/deepseek-v4-flash` | DeepSeek | ⚠️ 需测试 | 直接使用 DeepSeek 提供商 |
 
 可在后台 **设置** → **默认模型** 中修改默认模型。
 
@@ -130,8 +198,12 @@ Model:    cline-free/glm-5.2
 ├── auth.go             WorkOS OAuth 登录与 Token 刷新
 ├── pool.go             账号池管理、持久化、策略轮询
 ├── types.go            数据结构定义
+├── config.go           配置管理（.env 文件加载）
+├── scheduler.go        自动刷新调度器（Cron 任务）
 ├── capture.go          OAuth 信息捕获工具
 ├── http.go             HTTP 客户端与工具函数
+├── .env.example        环境变量配置模板
+├── .gitignore          Git 忽略文件配置
 ├── Dockerfile          Docker 构建
 ├── docker-compose.yml  Docker Compose 配置
 └── override.md         可选的系统提示词覆盖文件

@@ -235,6 +235,38 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 </div>
 
 <div class="section">
+  <div class="section-title">⏰ 自动刷新调度器</div>
+  <div class="section-body">
+    <p style="color:var(--text2);margin-bottom:12px">自动刷新已过期或冷却的账号 Token，保持账号池活跃。</p>
+    <div class="form-row">
+      <div class="field">
+        <label>启用状态</label>
+        <select id="schedulerEnabled">
+          <option value="true">启用</option>
+          <option value="false">禁用</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Cron 表达式 (分 时 日 月 周)</label>
+        <input type="text" id="schedulerCron" placeholder="0 */6 * * *">
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+      示例：<br>
+      • <code>0 */6 * * *</code> - 每 6 小时执行一次<br>
+      • <code>0 */2 * * *</code> - 每 2 小时执行一次<br>
+      • <code>0 0 * * *</code> - 每天午夜执行<br>
+      • <code>30 */4 * * *</code> - 每 4 小时的第 30 分钟执行
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="updateScheduler()">💾 保存配置</button>
+      <button class="btn btn-success" onclick="triggerManualRefresh()">🔄 立即刷新</button>
+    </div>
+    <div id="schedulerStatus" style="margin-top:12px;padding:12px;background:var(--bg3);border-radius:6px;font-size:13px"></div>
+  </div>
+</div>
+
+<div class="section">
   <div class="section-title">🔧 代理配置</div>
   <div class="section-body">
     <div class="form-row">
@@ -298,11 +330,72 @@ const API = '/admin/api';
 const _ = id => document.getElementById(id);
 const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
 
+let authToken = localStorage.getItem('adminToken') || '';
+
 function toast(msg, t) {
   const el = _('toast');
   el.textContent = msg;
   el.className = 'toast ' + t + ' show';
   setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ========== 认证 ==========
+async function checkAuth() {
+  try {
+    const res = await fetch(API + '/auth/check');
+    const data = await res.json();
+    if (data.data && data.data.passwordRequired) {
+      if (!authToken) {
+        showPasswordPrompt();
+        return false;
+      }
+      // Verify token
+      const verifyRes = await fetch(API + '/accounts', {
+        headers: { 'Authorization': 'Bearer ' + authToken }
+      });
+      if (verifyRes.status === 401) {
+        authToken = '';
+        localStorage.removeItem('adminToken');
+        showPasswordPrompt();
+        return false;
+      }
+    }
+    return true;
+  } catch (e) {
+    console.error('Auth check failed:', e);
+    return true; // Fallback to allow access if check fails
+  }
+}
+
+function showPasswordPrompt() {
+  const password = prompt('请输入管理面板密码:');
+  if (!password) {
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#e6edf3">访问被拒绝</div>';
+    return;
+  }
+  verifyPassword(password);
+}
+
+async function verifyPassword(password) {
+  try {
+    const res = await fetch(API + '/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (data.success) {
+      authToken = password;
+      localStorage.setItem('adminToken', password);
+      location.reload();
+    } else {
+      alert('密码错误');
+      showPasswordPrompt();
+    }
+  } catch (e) {
+    alert('验证失败: ' + e.message);
+    showPasswordPrompt();
+  }
 }
 
 // ========== 导航 ==========
@@ -343,8 +436,17 @@ document.querySelectorAll('#importTabs .tab').forEach(el => {
 // ========== API 请求 ==========
 async function api(method, path, body) {
   const opts = { method, headers: {} };
+  if (authToken) {
+    opts.headers['Authorization'] = 'Bearer ' + authToken;
+  }
   if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const res = await fetch(API + path, opts);
+  if (res.status === 401) {
+    authToken = '';
+    localStorage.removeItem('adminToken');
+    showPasswordPrompt();
+    throw new Error('Unauthorized');
+  }
   const data = await res.json();
   if (!data.success && data.error) throw new Error(data.error);
   return data;
@@ -653,18 +755,91 @@ async function loadConfig() {
         '</tr>'
       ).join('');
     }
+    // 加载调度器配置
+    loadSchedulerConfig();
   } catch (e) { /* ignore */ }
 }
+
+// ========== 调度器管理 ==========
+async function loadSchedulerConfig() {
+  try {
+    const d = await api('GET', '/scheduler/config');
+    const c = d.data;
+    if (c) {
+      _('schedulerEnabled').value = c.enabled ? 'true' : 'false';
+      _('schedulerCron').value = c.cron || '0 */6 * * *';
+      updateSchedulerStatus(c);
+    }
+  } catch (e) {
+    console.error('Load scheduler config failed:', e);
+  }
+}
+
+async function updateScheduler() {
+  try {
+    const enabled = _('schedulerEnabled').value === 'true';
+    const cron = _('schedulerCron').value.trim();
+    if (!cron) {
+      toast('请输入 Cron 表达式', 'error');
+      return;
+    }
+    const d = await api('POST', '/scheduler/config', { enabled, cron });
+    toast('调度器配置已更新', 'success');
+    updateSchedulerStatus(d.data);
+  } catch (e) {
+    toast('更新失败: ' + e.message, 'error');
+  }
+}
+
+async function triggerManualRefresh() {
+  try {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '🔄 刷新中...';
+    const d = await api('POST', '/scheduler/trigger');
+    toast('手动刷新完成: ' + (d.data.refreshed || 0) + ' 个账号', 'success');
+    loadAccounts();
+    loadStats();
+  } catch (e) {
+    toast('刷新失败: ' + e.message, 'error');
+  } finally {
+    const btn = event.target;
+    btn.disabled = false;
+    btn.textContent = '🔄 立即刷新';
+  }
+}
+
+function updateSchedulerStatus(config) {
+  const status = _('schedulerStatus');
+  if (!config) return;
+
+  const enabledText = config.enabled ? '<span style="color:var(--green)">✓ 启用</span>' : '<span style="color:var(--red)">✗ 禁用</span>';
+  const nextRunText = config.nextRun ? new Date(config.nextRun).toLocaleString('zh-CN') : '-';
+  const lastRunText = config.lastRun ? new Date(config.lastRun).toLocaleString('zh-CN') : '从未运行';
+
+  status.innerHTML =
+    '<div><strong>状态:</strong> ' + enabledText + '</div>' +
+    '<div><strong>Cron:</strong> <code>' + esc(config.cron || '-') + '</code></div>' +
+    '<div><strong>下次运行:</strong> ' + nextRunText + '</div>' +
+    '<div><strong>上次运行:</strong> ' + lastRunText + '</div>';
+}
+
 
 // ========== 初始化 ==========
 // 页面通过当前访问地址显示 API 地址，局域网访问时也能显示正确的 host
 _('footerApiAddr').textContent = location.origin;
-loadStats();
-loadAccounts();
-loadKeys();
-loadModels();
-loadConfig();
-setInterval(() => { loadStats(); }, 10000);
+
+// 先检查认证
+checkAuth().then(authed => {
+  if (authed) {
+    loadStats();
+    loadAccounts();
+    loadKeys();
+    loadModels();
+    loadConfig();
+    setInterval(() => { loadStats(); }, 10000);
+  }
+});
 </script>
 </body>
 </html>`
