@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   cline-proxy:
     build: .
@@ -10,6 +8,7 @@ services:
     volumes:
       - ./.cline-accounts.json:/app/.cline-accounts.json
       - ./override.md:/app/override.md:ro
+      - ./.env:/app/.env:ro
     environment:
       - HOST=0.0.0.0
       - PORT=3457
