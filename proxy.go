@@ -653,14 +653,11 @@ type anthropicReq struct {
 func loadOverrideContent() string {
 	data, err := os.ReadFile("override.md")
 	if err != nil {
-		log.Printf("  override.md not found: %v", err)
 		return ""
 	}
 	content := strings.TrimSpace(string(data))
 	if content != "" {
 		log.Printf("  using override.md as system prompt (%d bytes)", len(content))
-	} else {
-		log.Printf("  override.md is empty")
 	}
 	return content
 }
