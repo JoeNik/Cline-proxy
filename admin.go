@@ -555,15 +555,14 @@ func defaultProxyConfig() *proxyConfigData {
 	return &proxyConfigData{
 		Strategy: "round_robin",
 		Headers: map[string]string{
-			"User-Agent":         "Cline/3.0.47",
 			"HTTP-Referer":       "https://cline.bot",
 			"X-Title":            "Cline",
-			"X-IS-MULTIROOT":     "false",
-			"X-CLIENT-TYPE":      "cline-cli",
-			"X-CLIENT-VERSION":   "3.0.47",
-			"X-PLATFORM":         "terminal",
-			"X-PLATFORM-VERSION": "3.0.47",
-			"X-CORE-VERSION":     "0.0.66",
+			"User-Agent":         "Cline/4.1.16",
+			"X-Core-Version":     "4.1.16",
+			"X-Platform-Version": "1.106.0",
+			"X-Client-Version":   "4.1.16",
+			"X-Platform":         "vscode",
+			"X-Client-Type":      "cline-vscode",
 		},
 	}
 }
@@ -719,6 +718,7 @@ func handleAdminModels(w http.ResponseWriter, r *http.Request) {
 		{"id": "cline-pass/qwen3.7-plus", "provider": "qwen", "cost": "pass", "status": "active"},
 
 		// Direct provider models
+		{"id": "z-ai/glm-5.3-flash", "provider": "zai", "cost": "paid", "status": "active"},
 		{"id": "deepseek/deepseek-v4-flash", "provider": "deepseek", "cost": "paid", "status": "active"},
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"models": models}})

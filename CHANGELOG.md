@@ -1,5 +1,21 @@
 # 更新日志
 
+## 2026-08-28 - 支持 z-ai/glm-5.3-flash 与 deepseek/deepseek-v4-flash
+
+### 新增模型
+
+- `z-ai/glm-5.3-flash` - Z.ai GLM 5.3 Flash（直接提供商模型）
+
+### 请求头覆盖
+
+- 默认请求头更新为 Cline 4.1.16 VSCode 客户端：`user-agent: Cline/4.1.16`、`x-client-type: cline-vscode`、`x-platform: vscode`、`x-core-version: 4.1.16`、`x-platform-version: 1.106.0`、`x-client-version: 4.1.16`、`http-referer: https://cline.bot`、`x-title: Cline`
+
+### 更新的文件
+
+- `proxy.go` - 更新 `/v1/models` 端点的模型列表
+- `admin.go` - 更新管理后台模型列表和默认请求头
+- `README.md` - 更新模型说明
+
 ## 2026-08-05 - 同步官方模型列表
 
 ### 新增模型

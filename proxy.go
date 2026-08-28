@@ -150,6 +150,7 @@ func startProxy(host string, port int) error {
 		{"id": "cline-pass/qwen3.7-plus", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
 
 		// Direct provider models
+		{"id": "z-ai/glm-5.3-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "zai"},
 		{"id": "deepseek/deepseek-v4-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "deepseek"},
 	}
 

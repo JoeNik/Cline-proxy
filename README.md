@@ -184,6 +184,7 @@ SCHEDULER_CRON=0 */6 * * *
 
 | 模型 ID | 提供商 | 状态 | 说明 |
 |---------|--------|:----:|------|
+| `z-ai/glm-5.3-flash` | Z.ai | ⚠️ 需测试 | 直接使用 Z.ai 提供商 |
 | `deepseek/deepseek-v4-flash` | DeepSeek | ⚠️ 需测试 | 直接使用 DeepSeek 提供商 |
 
 可在后台 **设置** → **默认模型** 中修改默认模型。
