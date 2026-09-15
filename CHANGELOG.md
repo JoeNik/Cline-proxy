@@ -1,5 +1,29 @@
 # 更新日志
 
+## 2026-09-15 - 官方模型列表查询与支持模型动态增删
+
+### 新功能
+
+- 新增官方推荐模型接口查询：`https://api.cline.bot/api/v1/ai/cline/recommended-models`
+- 管理后台可一键拉取官方列表，按官方推荐/免费/Cline Pass/Cline Cloud 分组展示
+- 支持通过官方列表或手动输入模型 ID 添加/删除代理支持的模型，列表持久化到 `.cline-models.json`
+- `/v1/models` 与 `/admin/api/models` 改为从可持久化的支持模型列表动态生成
+
+### 模型调整
+
+- 默认模型改为 `cline-free/deepseek-v4.1-flash`
+- 默认支持列表同步官方模型分组，新增 `cline-free/muse-spark-1.3-contributor`、
+  `cline-free/solar-pro4`、`poolside/laguna-s-2.1:free`、`cline-pass/deepseek-v4.1-flash`、
+  `cline-pass/glm-5.3`、`cline-pass/glm-5.3-flash`、`cline-pass/qwen3.8-max`、
+  `cline-cloud/kimi-k3`、`cline-cloud/deepseek-v4-flash`、`cline-cloud/glm-5.2`
+
+### 更新的文件
+
+- `models_store.go` - 支持模型列表存储、官方模型列表拉取与分组
+- `admin.go` / `admin_html.go` - 管理后台模型管理 API 与 UI
+- `proxy.go` - `/v1/models` 改用支持模型列表
+- `README.md` / `.gitignore` - 文档与数据文件忽略规则
+
 ## 2026-08-28 - 支持 z-ai/glm-5.3-flash 与 deepseek/deepseek-v4-flash
 
 ### 新增模型

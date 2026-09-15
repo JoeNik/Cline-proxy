@@ -61,6 +61,9 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/keys/generate", corsHandler(authMiddleware(handleAdminGenerateKey)))
 	mux.HandleFunc("/admin/api/keys/delete", corsHandler(authMiddleware(handleAdminDeleteKey)))
 	mux.HandleFunc("/admin/api/models", corsHandler(authMiddleware(handleAdminModels)))
+	mux.HandleFunc("/admin/api/models/official", corsHandler(authMiddleware(handleAdminModelsOfficial)))
+	mux.HandleFunc("/admin/api/models/add", corsHandler(authMiddleware(handleAdminModelsAdd)))
+	mux.HandleFunc("/admin/api/models/delete", corsHandler(authMiddleware(handleAdminModelsDelete)))
 	mux.HandleFunc("/admin/api/config", corsHandler(authMiddleware(handleAdminConfig)))
 	mux.HandleFunc("/admin/api/config/update", corsHandler(authMiddleware(handleAdminUpdateConfig)))
 	mux.HandleFunc("/admin/api/scheduler/config", corsHandler(authMiddleware(handleSchedulerConfig)))
@@ -700,28 +703,140 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 
 // GET /admin/api/models
 func handleAdminModels(w http.ResponseWriter, r *http.Request) {
-	models := []map[string]any{
-		// Free models
-		{"id": "cline-free/glm-5.2", "provider": "zai", "cost": "free", "status": "active"},
-
-		// ClinePass models
-		{"id": "cline-pass/glm-5.2", "provider": "zai", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/deepseek-v4-flash", "provider": "deepseek", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/deepseek-v4-pro", "provider": "deepseek", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/kimi-k2.6", "provider": "moonshot", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/kimi-k2.7-code", "provider": "moonshot", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/kimi-k3", "provider": "moonshot", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/mimo-v2.5", "provider": "mimo", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/mimo-v2.5-pro", "provider": "mimo", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/minimax-m3", "provider": "minimax", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/qwen3.7-max", "provider": "qwen", "cost": "pass", "status": "active"},
-		{"id": "cline-pass/qwen3.7-plus", "provider": "qwen", "cost": "pass", "status": "active"},
-
-		// Direct provider models
-		{"id": "z-ai/glm-5.3-flash", "provider": "zai", "cost": "paid", "status": "active"},
-		{"id": "deepseek/deepseek-v4-flash", "provider": "deepseek", "cost": "paid", "status": "active"},
+	models := make([]map[string]any, 0)
+	for _, m := range supportedModels() {
+		models = append(models, map[string]any{
+			"id":       m.ID,
+			"name":     m.Name,
+			"provider": m.Provider,
+			"category": m.Category,
+			"cost":     m.Cost,
+			"status":   m.Status,
+			"ownedBy":  m.OwnedBy,
+		})
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"models": models}})
+}
+
+// POST /admin/api/models/official
+func handleAdminModelsOfficial(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	data, err := fetchOfficialModels()
+	if err != nil {
+		writeAPI(w, http.StatusBadGateway, apiResponse{Error: err.Error()})
+		return
+	}
+	supported := supportedModels()
+	officialGroups := []map[string]any{
+		officialModelGroup("recommended", "官方推荐", data.Recommended, supported),
+		officialModelGroup("free", "免费", data.Free, supported),
+		officialModelGroup("clinePass", "Cline Pass", data.Pass, supported),
+		officialModelGroup("clineCloud", "Cline Cloud", data.Cloud, supported),
+	}
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Data: map[string]any{
+			"source": officialModelsURL,
+			"groups": officialGroups,
+		},
+	})
+}
+
+// POST /admin/api/models/add  body: { id, name?, category?, provider? }
+func handleAdminModelsAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Category string `json:"category"`
+		Provider string `json:"provider"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
+		return
+	}
+
+	req.ID = strings.TrimSpace(req.ID)
+	if req.ID == "" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "model id is required"})
+		return
+	}
+
+	provider := strings.TrimSpace(req.Provider)
+	if provider == "" {
+		provider = providerFromID(req.ID)
+	}
+	if provider == "unknown" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "model id must be prefixed with a provider, e.g. z-ai/glm-5.3-flash"})
+		return
+	}
+
+	entry := ModelEntry{
+		ID:       req.ID,
+		Name:     req.Name,
+		Provider: provider,
+		Category: req.Category,
+		Cost:     modelCostForCategory(req.Category),
+		Status:   "active",
+		OwnedBy:  provider,
+	}
+	if entry.Name == "" {
+		entry.Name = req.ID
+	}
+	if entry.Category == "" {
+		entry.Category = "custom"
+	}
+
+	if err := addSupportedModel(entry); err != nil {
+		writeAPI(w, http.StatusConflict, apiResponse{Error: err.Error()})
+		return
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "Model added: " + entry.ID})
+}
+
+// POST /admin/api/models/delete  body: { id }
+func handleAdminModelsDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
+		return
+	}
+	req.ID = strings.TrimSpace(req.ID)
+	if req.ID == "" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "model id is required"})
+		return
+	}
+	if err := removeSupportedModel(req.ID); err != nil {
+		writeAPI(w, http.StatusNotFound, apiResponse{Error: err.Error()})
+		return
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "Model removed: " + req.ID})
 }
 
 // GET /admin/api/stats

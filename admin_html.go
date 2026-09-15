@@ -86,6 +86,9 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 .model-tag{display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;background:var(--bg3);color:var(--text2);margin:2px}
 .model-tag.free{border:1px solid var(--green);color:var(--green)}
 .model-tag.pass{border:1px solid var(--yellow);color:var(--yellow)}
+.model-tag.paid{border:1px solid var(--red);color:var(--red)}
+.model-item{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px}
+.model-item .btn-sm{padding:2px 8px;font-size:11px}
 .justify-between{display:flex;justify-content:space-between;align-items:center}
 </style>
 </head>
@@ -230,7 +233,22 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 <div class="section">
   <div class="section-title">🧠 可用模型</div>
   <div class="section-body">
+    <div class="form-row">
+      <div class="field">
+        <label>官方推荐模型地址</label>
+        <input type="text" id="officialModelsUrl" value="https://api.cline.bot/api/v1/ai/cline/recommended-models" readonly>
+      </div>
+      <button class="btn btn-primary" onclick="fetchOfficialModels()" id="officialModelsBtn">🔄 拉取官方列表</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">支持列表可从官方推荐模型接口一键拉取，可直接添加/删除，并可随时刷新官方列表。</div>
     <div id="modelsList">加载中...</div>
+    <div class="form-row" style="margin-top:12px">
+      <div class="field">
+        <label>手动添加模型 ID（例如 z-ai/glm-5.3-flash）</label>
+        <input type="text" id="modelAddId" placeholder="provider/model-name">
+      </div>
+      <button class="btn btn-success" onclick="addModelManually()">➕ 添加</button>
+    </div>
   </div>
 </div>
 
@@ -331,6 +349,8 @@ const _ = id => document.getElementById(id);
 const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
 
 let authToken = localStorage.getItem('adminToken') || '';
+let officialModelsById = {};
+let officialViewActive = false;
 
 function toast(msg, t) {
   const el = _('toast');
@@ -729,10 +749,89 @@ async function loadModels() {
   try {
     const d = await api('GET', '/models');
     const models = d.data.models || [];
+    if (!models.length) { _('modelsList').innerHTML = '<div class="empty">暂无支持模型</div>'; return; }
     _('modelsList').innerHTML = models.map(m =>
-      '<span class="model-tag ' + (m.cost || 'free') + '">' + esc(m.id) + '</span>'
-    ).join('') || '<div class="empty">暂无模型</div>';
-  } catch (e) { _('modelsList').textContent = '加载失败'; }
+      '<div class="model-item">' +
+        '<span class="model-tag ' + (m.cost || 'free') + '">' + (m.cost || 'free') + '</span> ' +
+        '<span class="mono">' + esc(m.id) + '</span>' +
+        '<span style="color:var(--text2)">' + esc(m.provider || '') + '</span>' +
+        (m.status !== 'active' ? ' <span style="color:var(--yellow)">' + esc(m.status) + '</span>' : '') +
+        '<button class="btn btn-sm btn-danger" onclick="removeModel(\'' + esc(m.id).replace(/'/g, '\\\'') + '\')">✕</button>' +
+      '</div>'
+    ).join('');
+  } catch (e) { _('modelsList').innerHTML = '<div class="empty">加载失败</div>'; }
+}
+
+async function fetchOfficialModels() {
+  const btn = _('officialModelsBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span> 拉取中...';
+  _('modelsList').innerHTML = '<div class="empty">拉取官方推荐模型中...</div>';
+  try {
+    const d = await api('POST', '/models/official');
+    const groups = d.data.groups || [];
+    if (!groups.length) { _('modelsList').innerHTML = '<div class="empty">官方列表为空</div>'; return; }
+    const official = {};
+    groups.forEach(g => (g.models || []).forEach(m => { official[m.id] = m; }));
+    officialModelsById = official;
+    officialViewActive = true;
+    _('modelsList').innerHTML = groups.map(g => {
+      const models = g.models || [];
+      return '<div style="margin-bottom:8px">' +
+        '<div style="font-weight:600;margin-bottom:4px">' + esc(g.label) + ' <span style="color:var(--text2)">(' + models.length + ')</span></div>' +
+        models.map(m =>
+          '<div class="model-item">' +
+            '<span class="model-tag ' + (m.category === 'free' ? 'free' : (m.category === 'clinePass' ? 'pass' : 'paid')) + '">' + esc(m.category) + '</span> ' +
+            '<span class="mono">' + esc(m.id) + '</span>' +
+            '<span style="color:var(--text2)">' + esc(m.provider || '') + '</span>' +
+            (m.supported
+              ? '<button class="btn btn-sm btn-danger" onclick="removeModel(\'' + esc(m.id).replace(/'/g, '\\\'') + '\')">删除</button>'
+              : '<button class="btn btn-sm btn-success" onclick="addModelFromOfficial(\'' + esc(m.id).replace(/'/g, '\\\'') + '\')">添加</button>')
+          + '</div>'
+        ).join('') +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    officialViewActive = false;
+    _('modelsList').innerHTML = '<div class="empty">拉取失败</div>';
+    toast('拉取官方列表失败: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 拉取官方列表';
+  }
+}
+
+async function addModelFromOfficial(id) {
+  const m = officialModelsById[id] || {};
+  try {
+    await api('POST', '/models/add', { id, name: m.name, category: m.category, provider: m.provider });
+    toast('已添加: ' + id, 'success');
+    refreshModelsAfterChange();
+  } catch (e) { toast('添加失败: ' + e.message, 'error'); }
+}
+
+async function removeModel(id) {
+  if (!confirm('确定从支持列表移除 ' + id + '？')) return;
+  try {
+    await api('POST', '/models/delete', { id });
+    toast('已移除: ' + id, 'success');
+    refreshModelsAfterChange();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+function refreshModelsAfterChange() {
+  if (officialViewActive) { fetchOfficialModels(); } else { loadModels(); }
+}
+
+async function addModelManually() {
+  const id = _('modelAddId').value.trim();
+  if (!id) { toast('请输入模型 ID', 'error'); return; }
+  try {
+    await api('POST', '/models/add', { id });
+    toast('已添加: ' + id, 'success');
+    _('modelAddId').value = '';
+    loadModels();
+  } catch (e) { toast('添加失败: ' + e.message, 'error'); }
 }
 
 // ========== 配置加载 ==========

@@ -19,7 +19,7 @@ import (
 var listenAddr = "127.0.0.1:3457"
 
 const (
-	defaultModel          = "cline-free/glm-5.2"
+	defaultModel          = "cline-free/deepseek-v4.1-flash"
 	defaultMaxTokens      = 128000
 	defaultReasoningEffort = "high"
 )
@@ -132,30 +132,8 @@ func startProxy(host string, port int) error {
 		})
 	}
 
-	modelsList := []map[string]any{
-		// Free models
-		{"id": "cline-free/glm-5.2", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-
-		// ClinePass models
-		{"id": "cline-pass/glm-5.2", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/deepseek-v4-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/deepseek-v4-pro", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/kimi-k2.6", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/kimi-k2.7-code", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/kimi-k3", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/mimo-v2.5", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/mimo-v2.5-pro", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/minimax-m3", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/qwen3.7-max", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-		{"id": "cline-pass/qwen3.7-plus", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "cline"},
-
-		// Direct provider models
-		{"id": "z-ai/glm-5.3-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "zai"},
-		{"id": "deepseek/deepseek-v4-flash", "object": "model", "created": time.Now().UnixMilli(), "owned_by": "deepseek"},
-	}
-
 	modelsHandler := apiKeyHandler(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": modelsList})
+		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": supportedModelsOpenAI()})
 	})
 	mux.HandleFunc("/v1/models", modelsHandler)
 	mux.HandleFunc("/models", modelsHandler)

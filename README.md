@@ -12,7 +12,8 @@ Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic M
 - **自动刷新调度器**：定时自动刷新过期或冷却的账号 Token，保持账号池活跃
 - **System Prompt 覆盖**：项目目录下放 `override.md` 则自动替换系统提示词，不存在则使用客户端自带
 - **账号导入**：支持 OAuth 浏览器登录、手动 Token 输入、批量文件导入
-- **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`
+- **持久化存储**：账号和 Key 保存在 `.cline-accounts.json`，支持的模型列表保存在 `.cline-models.json`
+- **官方模型列表**：管理后台一键拉取官方推荐模型，按分组勾选添加/删除支持的模型
 
 ## 快速开始
 
@@ -75,14 +76,14 @@ docker compose down
 ```
 Base URL: http://127.0.0.1:3457/v1
 API Key:  <在管理后台生成的 Key>
-Model:    cline-free/glm-5.2
+Model:    cline-free/deepseek-v4.1-flash
 ```
 
 **Anthropic 格式（/v1/messages）：**
 ```
 Base URL: http://127.0.0.1:3457/v1
 API Key:  <在管理后台生成的 Key>
-Model:    cline-free/glm-5.2
+Model:    cline-free/deepseek-v4.1-flash
 ```
 
 ### 3. API Key 管理
@@ -142,6 +143,15 @@ SCHEDULER_ENABLED=false
 SCHEDULER_CRON=0 */6 * * *
 ```
 
+### 9. 官方模型列表管理
+
+在后台 **设置** → **可用模型** 点击 **拉取官方列表**，代理会从官方推荐模型接口
+`https://api.cline.bot/api/v1/ai/cline/recommended-models` 拉取最新的官方推荐、免费、
+Cline Pass 和 Cline Cloud 模型分组。每个模型可以一键添加为代理支持模型或从支持列表删除，
+也可以手动输入模型 ID 添加。
+
+支持列表保存在可执行文件同目录的 `.cline-models.json`，重启后仍然生效；删除该文件可恢复默认模型列表。
+
 ## 可用模型（实测）
 
 ### 消耗账户额度
@@ -198,6 +208,7 @@ SCHEDULER_CRON=0 */6 * * *
 ├── admin_html.go       管理后台前端 HTML（嵌入 Go 二进制）
 ├── auth.go             WorkOS OAuth 登录与 Token 刷新
 ├── pool.go             账号池管理、持久化、策略轮询
+├── models_store.go     支持模型列表持久化与官方模型列表查询
 ├── types.go            数据结构定义
 ├── config.go           配置管理（.env 文件加载）
 ├── scheduler.go        自动刷新调度器（Cron 任务）

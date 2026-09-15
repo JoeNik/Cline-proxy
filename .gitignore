@@ -8,6 +8,7 @@ Cline-proxy.exe
 # 数据文件
 accounts.json
 keys.json
+.cline-models.json
 
 # 日志文件
 *.log
