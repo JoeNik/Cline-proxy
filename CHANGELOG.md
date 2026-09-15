@@ -7,6 +7,7 @@
 - 新增官方推荐模型接口查询：`https://api.cline.bot/api/v1/ai/cline/recommended-models`
 - 管理后台可一键拉取官方列表，按官方推荐/免费/Cline Pass/Cline Cloud 分组展示
 - 支持通过官方列表或手动输入模型 ID 添加/删除代理支持的模型，列表持久化到 `.cline-models.json`
+- 支持模型列表支持勾选批量删除和一键清空
 - `/v1/models` 与 `/admin/api/models` 改为从可持久化的支持模型列表动态生成
 
 ### 模型调整

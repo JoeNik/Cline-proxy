@@ -89,6 +89,7 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
 .model-tag.paid{border:1px solid var(--red);color:var(--red)}
 .model-item{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px}
 .model-item .btn-sm{padding:2px 8px;font-size:11px}
+.model-check{width:14px;height:14px;accent-color:var(--green);margin-right:8px;flex:none}
 .justify-between{display:flex;justify-content:space-between;align-items:center}
 </style>
 </head>
@@ -241,6 +242,15 @@ textarea{resize:vertical;min-height:80px;font-family:'Cascadia Code','Fira Code'
       <button class="btn btn-primary" onclick="fetchOfficialModels()" id="officialModelsBtn">🔄 拉取官方列表</button>
     </div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">支持列表可从官方推荐模型接口一键拉取，可直接添加/删除，并可随时刷新官方列表。</div>
+    <div class="form-row" id="modelsToolbar" style="display:none;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+        <input type="checkbox" id="modelsSelectAll" onchange="toggleSelectAllModels(this.checked)">
+        <span>全选</span>
+      </label>
+      <button class="btn btn-sm btn-danger" onclick="deleteSelectedModels()">🗑️ 批量删除</button>
+      <button class="btn btn-sm btn-danger" onclick="clearAllModels()">🗑️ 清空全部</button>
+      <span id="modelsSelectionInfo" style="color:var(--text2);font-size:12px"></span>
+    </div>
     <div id="modelsList">加载中...</div>
     <div class="form-row" style="margin-top:12px">
       <div class="field">
@@ -749,9 +759,19 @@ async function loadModels() {
   try {
     const d = await api('GET', '/models');
     const models = d.data.models || [];
-    if (!models.length) { _('modelsList').innerHTML = '<div class="empty">暂无支持模型</div>'; return; }
+    const toolbar = _('modelsToolbar');
+    const all = _('modelsSelectAll');
+    if (all) { all.checked = false; }
+    if (!models.length) {
+      toolbar.style.display = 'none';
+      _('modelsSelectionInfo').textContent = '';
+      _('modelsList').innerHTML = '<div class="empty">暂无支持模型</div>';
+      return;
+    }
+    toolbar.style.display = 'flex';
     _('modelsList').innerHTML = models.map(m =>
       '<div class="model-item">' +
+        '<input type="checkbox" class="model-check" data-id="' + esc(m.id).replace(/"/g, '&quot;') + '" onchange="updateModelsSelection()">' +
         '<span class="model-tag ' + (m.cost || 'free') + '">' + (m.cost || 'free') + '</span> ' +
         '<span class="mono">' + esc(m.id) + '</span>' +
         '<span style="color:var(--text2)">' + esc(m.provider || '') + '</span>' +
@@ -759,6 +779,7 @@ async function loadModels() {
         '<button class="btn btn-sm btn-danger" onclick="removeModel(\'' + esc(m.id).replace(/'/g, '\\\'') + '\')">✕</button>' +
       '</div>'
     ).join('');
+    updateModelsSelection();
   } catch (e) { _('modelsList').innerHTML = '<div class="empty">加载失败</div>'; }
 }
 
@@ -767,6 +788,7 @@ async function fetchOfficialModels() {
   btn.disabled = true;
   btn.innerHTML = '<span class="loading"></span> 拉取中...';
   _('modelsList').innerHTML = '<div class="empty">拉取官方推荐模型中...</div>';
+  _('modelsToolbar').style.display = 'none';
   try {
     const d = await api('POST', '/models/official');
     const groups = d.data.groups || [];
@@ -817,6 +839,41 @@ async function removeModel(id) {
     toast('已移除: ' + id, 'success');
     refreshModelsAfterChange();
   } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+function updateModelsSelection() {
+  const checks = document.querySelectorAll('#modelsList .model-check');
+  const checked = document.querySelectorAll('#modelsList .model-check:checked').length;
+  const all = _('modelsSelectAll');
+  if (all && checks.length) { all.checked = checked === checks.length && checked > 0; }
+  const info = _('modelsSelectionInfo');
+  if (info) { info.textContent = checked ? '已选 ' + checked + ' 个' : ''; }
+}
+
+function toggleSelectAllModels(checked) {
+  document.querySelectorAll('#modelsList .model-check').forEach(c => { c.checked = checked; });
+  updateModelsSelection();
+}
+
+async function deleteSelectedModels() {
+  const ids = [];
+  document.querySelectorAll('#modelsList .model-check:checked').forEach(c => ids.push(c.getAttribute('data-id')));
+  if (!ids.length) { toast('请先勾选要删除的模型', 'error'); return; }
+  if (!confirm('确定移除选中的 ' + ids.length + ' 个模型？')) return;
+  try {
+    const d = await api('POST', '/models/delete-many', { ids });
+    toast('已移除 ' + (d.data && d.data.removed) + ' 个模型', 'success');
+    refreshModelsAfterChange();
+  } catch (e) { toast('批量删除失败: ' + e.message, 'error'); }
+}
+
+async function clearAllModels() {
+  if (!confirm('确定清空全部支持模型？此操作不可撤销。')) return;
+  try {
+    const d = await api('POST', '/models/clear');
+    toast('已清空 ' + (d.data && d.data.cleared) + ' 个模型', 'success');
+    refreshModelsAfterChange();
+  } catch (e) { toast('清空失败: ' + e.message, 'error'); }
 }
 
 function refreshModelsAfterChange() {

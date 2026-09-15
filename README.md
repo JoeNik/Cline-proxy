@@ -148,7 +148,7 @@ SCHEDULER_CRON=0 */6 * * *
 在后台 **设置** → **可用模型** 点击 **拉取官方列表**，代理会从官方推荐模型接口
 `https://api.cline.bot/api/v1/ai/cline/recommended-models` 拉取最新的官方推荐、免费、
 Cline Pass 和 Cline Cloud 模型分组。每个模型可以一键添加为代理支持模型或从支持列表删除，
-也可以手动输入模型 ID 添加。
+也可以手动输入模型 ID 添加。支持列表支持勾选批量删除和一键清空。
 
 支持列表保存在可执行文件同目录的 `.cline-models.json`，重启后仍然生效；删除该文件可恢复默认模型列表。
 

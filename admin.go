@@ -64,6 +64,8 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/models/official", corsHandler(authMiddleware(handleAdminModelsOfficial)))
 	mux.HandleFunc("/admin/api/models/add", corsHandler(authMiddleware(handleAdminModelsAdd)))
 	mux.HandleFunc("/admin/api/models/delete", corsHandler(authMiddleware(handleAdminModelsDelete)))
+	mux.HandleFunc("/admin/api/models/delete-many", corsHandler(authMiddleware(handleAdminModelsDeleteMany)))
+	mux.HandleFunc("/admin/api/models/clear", corsHandler(authMiddleware(handleAdminModelsClear)))
 	mux.HandleFunc("/admin/api/config", corsHandler(authMiddleware(handleAdminConfig)))
 	mux.HandleFunc("/admin/api/config/update", corsHandler(authMiddleware(handleAdminUpdateConfig)))
 	mux.HandleFunc("/admin/api/scheduler/config", corsHandler(authMiddleware(handleSchedulerConfig)))
@@ -837,6 +839,61 @@ func handleAdminModelsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: "Model removed: " + req.ID})
+}
+
+// POST /admin/api/models/delete-many  body: { ids: [...] }
+func handleAdminModelsDeleteMany(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid JSON"})
+		return
+	}
+
+	cleaned := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			cleaned = append(cleaned, id)
+		}
+	}
+	if len(cleaned) == 0 {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "model ids are required"})
+		return
+	}
+
+	removed := removeSupportedModels(cleaned)
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Message: fmt.Sprintf("Removed %d models", removed),
+		Data:    map[string]any{"removed": removed, "requested": len(cleaned)},
+	})
+}
+
+// POST /admin/api/models/clear
+func handleAdminModelsClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: "method not allowed"})
+		return
+	}
+	removed := clearSupportedModels()
+	writeAPI(w, http.StatusOK, apiResponse{
+		Success: true,
+		Message: fmt.Sprintf("Cleared %d models", removed),
+		Data:    map[string]any{"cleared": removed},
+	})
 }
 
 // GET /admin/api/stats

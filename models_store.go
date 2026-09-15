@@ -167,6 +167,49 @@ func removeSupportedModel(id string) error {
 	return fmt.Errorf("model not found")
 }
 
+// removeSupportedModels removes every model whose id is in ids and returns the
+// number of entries actually removed. Unknown ids are ignored.
+func removeSupportedModels(ids []string) int {
+	store := loadModelsStore()
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+
+	removeSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		removeSet[id] = true
+	}
+	kept := make([]ModelEntry, 0, len(store.Models))
+	removed := 0
+	for _, m := range store.Models {
+		if removeSet[m.ID] {
+			removed++
+			continue
+		}
+		kept = append(kept, m)
+	}
+	if removed > 0 {
+		store.Models = kept
+		persistModelsStoreLocked()
+	}
+	return removed
+}
+
+// clearSupportedModels empties the supported model list and returns the
+// number of entries that were removed.
+func clearSupportedModels() int {
+	store := loadModelsStore()
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+
+	removed := len(store.Models)
+	if removed == 0 {
+		return 0
+	}
+	store.Models = []ModelEntry{}
+	persistModelsStoreLocked()
+	return removed
+}
+
 // modelCostForCategory mirrors the official list groups to the proxy cost tiers.
 func modelCostForCategory(category string) string {
 	switch category {
